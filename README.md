@@ -10,10 +10,11 @@ A simple, lightweight peer-to-peer video meeting application built with pure Web
 
 - **Simple Room System**: 9-digit Room ID for easy sharing
 - **True P2P Connection**: Direct peer-to-peer video/audio streaming using WebRTC
-- **No Backend Required**: Works entirely in the browser using localStorage for signaling
+- **Cross-Device Support**: Works across different devices using Firebase Realtime Database
+- **Real-time Signaling**: Instant connection establishment with Firebase
 - **Clean UI**: Modern black and blue theme with 50-50 video split
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
-- **Privacy First**: No data sent to external servers
+- **Privacy First**: Only signaling data stored in Firebase, media streams are P2P
 
 ---
 
@@ -31,9 +32,13 @@ A simple, lightweight peer-to-peer video meeting application built with pure Web
 - **getUserMedia**: Camera and microphone access
 - **MediaStream**: Audio/video stream handling
 
+### Backend & Database
+
+- **Firebase Realtime Database**: Cross-device signaling and room management
+- **Firebase Hosting**: Static file hosting and deployment
+
 ### Browser APIs
 
-- **localStorage**: Signaling mechanism (offer/answer exchange)
 - **Clipboard API**: One-click Room ID copying
 
 ---
@@ -42,15 +47,17 @@ A simple, lightweight peer-to-peer video meeting application built with pure Web
 
 ```
 Zoom/
-├── index.html      # Main HTML structure
-├── style.css       # Styling and theme
-├── script.js       # WebRTC logic and app functionality
-└── README.md       # Documentation
+├── index.html           # Main HTML structure
+├── style.css            # Styling and theme
+├── script.js            # WebRTC logic and app functionality
+├── config.js            # Firebase configuration
+├── README.md            # Documentation
+└── FIREBASE_SETUP.md    # Firebase setup guide
 ```
 
-**Total Files:** 3 core files (+ README)  
-**Total Lines:** ~600 lines of clean, commented code  
-**Dependencies:** Zero! Pure vanilla implementation
+**Total Files:** 4 core files (+ 2 docs)  
+**Total Lines:** ~700 lines of clean, commented code  
+**Dependencies:** Firebase SDK (CDN)
 
 ---
 
@@ -72,42 +79,56 @@ Zoom/
 
 ### 3. **Signaling Process**
 
-- **Host** creates an SDP offer and saves it to localStorage
-- **Joiner** reads the offer, creates an SDP answer, and saves it
-- **Host** reads the answer and completes the connection
-- ICE candidates are exchanged for NAT traversal
+- **Host** creates an SDP offer and saves it to Firebase Realtime Database
+- **Joiner** reads the offer from Firebase, creates an SDP answer, and saves it back
+- **Host** receives the answer in real-time via Firebase listeners
+- ICE candidates are exchanged automatically through Firebase
+- All signaling happens instantly across devices
 
 ### 4. **P2P Connection**
 
 - Once signaling completes, direct peer-to-peer connection is established
 - Audio and video streams flow directly between browsers
-- No intermediary server involved in media transmission
+- No intermediary server involved in media transmission (only signaling uses Firebase)
 
 ---
 
 ## 🚀 How to Run
 
-### Option 1: Direct File Opening
+### Prerequisites
 
-1. Download all files to a folder
-2. Open `index.html` in a modern browser (Chrome, Firefox, Edge, Safari)
-3. Allow camera/microphone permissions when prompted
-4. Start creating or joining meetings!
+1. **Firebase Project**: You need a Firebase project with Realtime Database enabled
+2. **Follow the setup guide**: See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for detailed instructions
 
-### Option 2: Local Server (Recommended)
+### Quick Start
+
+1. **Setup Firebase** (5 minutes):
+
+   - Create a Firebase project
+   - Enable Realtime Database
+   - Copy your config to `config.js`
+   - See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for step-by-step guide
+
+2. **Deploy Your App**:
 
 ```bash
-# Using Python 3
-python3 -m http.server 8000
+# Using Firebase Hosting (Recommended)
+npm install -g firebase-tools
+firebase login
+firebase init
+firebase deploy
 
-# Using Node.js
-npx http-server
-
-# Using PHP
-php -S localhost:8000
+# Or use any static hosting (Netlify, Vercel, GitHub Pages, etc.)
 ```
 
-Then open `http://localhost:8000` in your browser.
+3. **Test Across Devices**:
+   - Open the deployed URL on Device 1
+   - Create a meeting and copy the Room ID
+   - Open the same URL on Device 2
+   - Join using the Room ID
+   - Enjoy your video call! 🎉
+
+**Note**: The app must be deployed to work across devices. Local testing only works on the same device.
 
 ---
 
@@ -137,21 +158,19 @@ Then open `http://localhost:8000` in your browser.
 
 ## 🔧 Technical Implementation
 
-### WebRTC Flow
+### WebRTC Flow with Firebase
 
 ```
-Host                          Joiner
-  |                             |
-  |-- Create Offer ------------>|
-  |   (save to localStorage)    |
-  |                             |
-  |<--------- Create Answer ----|
-  |   (save to localStorage)    |
-  |                             |
-  |-- Read Answer ------------->|
-  |                             |
-  |<==== P2P Connection =======>|
-  |   (direct media stream)     |
+Host                    Firebase                    Joiner
+  |                        |                          |
+  |-- Save Offer --------->|                          |
+  |                        |<-------- Read Offer -----|
+  |                        |                          |
+  |                        |<----- Save Answer -------|
+  |<--- Read Answer -------|                          |
+  |                        |                          |
+  |<======== P2P Connection (Direct) ===============>|
+  |                        |                          |
 ```
 
 ### Key Components
@@ -169,17 +188,22 @@ new RTCPeerConnection(config);
 peerConnection.addTrack(track, localStream);
 ```
 
-**3. Signaling via localStorage**
+**3. Signaling via Firebase**
 
 ```javascript
-localStorage.setItem("offer_" + roomId, offer);
-localStorage.getItem("answer_" + roomId);
+// Save offer
+database.ref("rooms/" + roomId + "/offer").set(offer);
+
+// Listen for answer
+database.ref("rooms/" + roomId + "/answer").on("value", callback);
 ```
 
 **4. ICE Candidate Exchange**
 
 ```javascript
-peerConnection.onicecandidate = (event) => { ... }
+peerConnection.onicecandidate = (event) => {
+  database.ref("rooms/" + roomId + "/candidates").push(candidate);
+};
 ```
 
 ---
@@ -199,22 +223,22 @@ peerConnection.onicecandidate = (event) => { ... }
 
 ## ⚠️ Limitations
 
-1. **Same Device Limitation**: Both users must open the app on the same computer (due to localStorage signaling)
-2. **No Persistence**: Room data is cleared when the host leaves
-3. **Two Participants Only**: Designed for 1-on-1 meetings
-4. **NAT Traversal**: May not work behind strict firewalls (STUN servers help, but TURN server would be needed for 100% reliability)
+1. **Two Participants Only**: Designed for 1-on-1 meetings
+2. **NAT Traversal**: May not work behind strict firewalls (STUN servers help, but TURN server would be needed for 100% reliability)
+3. **Firebase Free Tier**: Limited to Firebase free tier quotas (sufficient for testing and small deployments)
 
 ---
 
 ## 🔮 Future Enhancements
 
-- [ ] Add Firebase/WebSocket for cross-device signaling
-- [ ] Support for multiple participants
+- [ ] Support for multiple participants (3+ people)
 - [ ] Screen sharing capability
 - [ ] Chat messaging
 - [ ] Recording functionality
 - [ ] Virtual backgrounds
 - [ ] Network quality indicators
+- [ ] User authentication
+- [ ] Room passwords/security
 
 ---
 

@@ -81,7 +81,8 @@ function createPeerConnection() {
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            saveToStorage('candidate_' + currentRoomId, event.candidate);
+            const candidatesRef = database.ref('rooms/' + currentRoomId + '/candidates');
+            candidatesRef.push(event.candidate.toJSON());
         }
     };
 
@@ -96,20 +97,27 @@ function createPeerConnection() {
     };
 }
 
-// Storage helpers (using localStorage for signaling)
-function saveToStorage(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
+// Firebase Database helpers (replacing localStorage for cross-device support)
+function saveToDatabase(path, data) {
+    return database.ref(path).set(data);
 }
 
-function getFromStorage(key) {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : null;
+function getFromDatabase(path) {
+    return database.ref(path).once('value').then(snapshot => snapshot.val());
 }
 
-function clearRoomStorage(roomId) {
-    localStorage.removeItem('offer_' + roomId);
-    localStorage.removeItem('answer_' + roomId);
-    localStorage.removeItem('candidate_' + roomId);
+function listenToDatabase(path, callback) {
+    return database.ref(path).on('value', snapshot => {
+        callback(snapshot.val());
+    });
+}
+
+function removeFromDatabase(path) {
+    return database.ref(path).remove();
+}
+
+function clearRoomData(roomId) {
+    return database.ref('rooms/' + roomId).remove();
 }
 
 // New Meeting
@@ -146,11 +154,19 @@ newMeetingBtn.addEventListener('click', async () => {
             }
         });
         
-        // Save offer to storage
-        saveToStorage('offer_' + currentRoomId, peerConnection.localDescription);
+        // Save offer to Firebase
+        await saveToDatabase('rooms/' + currentRoomId + '/offer', peerConnection.localDescription.toJSON());
         
-        // Poll for answer
-        pollForAnswer();
+        // Listen for answer in real-time
+        listenToDatabase('rooms/' + currentRoomId + '/answer', async (answer) => {
+            if (answer && peerConnection.signalingState !== 'stable') {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                updateStatus('Connecting...', false);
+                
+                // Listen for remote ICE candidates
+                listenForCandidates();
+            }
+        });
         
     } catch (error) {
         console.error('Error creating offer:', error);
@@ -158,22 +174,19 @@ newMeetingBtn.addEventListener('click', async () => {
     }
 });
 
-// Poll for Answer (host waits for joiner)
-function pollForAnswer() {
-    const interval = setInterval(() => {
-        const answer = getFromStorage('answer_' + currentRoomId);
-        if (answer) {
-            clearInterval(interval);
-            peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
-                .then(() => {
-                    updateStatus('Connecting...', false);
-                })
-                .catch(err => console.error('Error setting answer:', err));
+// Listen for ICE candidates from remote peer
+function listenForCandidates() {
+    const candidatesRef = database.ref('rooms/' + currentRoomId + '/candidates');
+    candidatesRef.on('child_added', async (snapshot) => {
+        const candidate = snapshot.val();
+        if (candidate && peerConnection) {
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
         }
-    }, 1000);
-    
-    // Stop polling after 5 minutes
-    setTimeout(() => clearInterval(interval), 300000);
+    });
 }
 
 // Join Meeting
@@ -185,7 +198,8 @@ joinMeetingBtn.addEventListener('click', async () => {
         return;
     }
     
-    const offer = getFromStorage('offer_' + roomId);
+    // Check if room exists in Firebase
+    const offer = await getFromDatabase('rooms/' + roomId + '/offer');
     if (!offer) {
         alert('Room not found. Please check the Room ID');
         return;
@@ -224,8 +238,11 @@ joinMeetingBtn.addEventListener('click', async () => {
             }
         });
         
-        // Save answer to storage
-        saveToStorage('answer_' + currentRoomId, peerConnection.localDescription);
+        // Save answer to Firebase
+        await saveToDatabase('rooms/' + currentRoomId + '/answer', peerConnection.localDescription.toJSON());
+        
+        // Listen for remote ICE candidates
+        listenForCandidates();
         
     } catch (error) {
         console.error('Error joining meeting:', error);
@@ -285,8 +302,12 @@ function cleanup() {
         peerConnection = null;
     }
     
-    if (currentRoomId && isHost) {
-        clearRoomStorage(currentRoomId);
+    // Clean up Firebase listeners and data
+    if (currentRoomId) {
+        database.ref('rooms/' + currentRoomId).off();
+        if (isHost) {
+            clearRoomData(currentRoomId);
+        }
     }
     
     localVideo.srcObject = null;
