@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Simple P2P video meeting platform" />
+    <title>Zoom - Video Meeting</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- Home Screen -->
+      <div id="homeScreen" class="screen active">
+        <div class="home-container">
+          <h1 class="logo">Zoom</h1>
+          <div class="actions">
+            <button id="newMeetingBtn" class="btn-primary">
+              <span class="icon">➕</span>
+              New Meeting
+            </button>
+            <div class="join-section">
+              <input
+                type="text"
+                id="roomIdInput"
+                placeholder="Enter 9-digit Room ID"
+                maxlength="9"
+                pattern="[0-9]*"
+              />
+              <button id="joinMeetingBtn" class="btn-secondary">Join</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meeting Screen -->
+      <div id="meetingScreen" class="screen">
+        <div class="meeting-header">
+          <div class="room-info">
+            <span class="room-label">Room ID:</span>
+            <span id="displayRoomId" class="room-id">---------</span>
+            <button id="copyRoomIdBtn" class="copy-btn">Copy</button>
+          </div>
+          <div class="status-indicator">
+            <span id="statusDot" class="dot"></span>
+            <span id="statusText">Waiting...</span>
+          </div>
+        </div>
+
+        <div class="video-grid">
+          <div class="video-wrapper">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <div class="video-label">You</div>
+          </div>
+          <div class="video-wrapper">
+            <video id="remoteVideo" autoplay playsinline></video>
+            <div class="video-label" id="remoteLabel">
+              Waiting for participant...
+            </div>
+          </div>
+        </div>
+
+        <div class="controls-bar">
+          <button id="toggleMicBtn" class="control-btn active">
+            <span class="icon">🎤</span>
+          </button>
+          <button id="toggleCamBtn" class="control-btn active">
+            <span class="icon">📹</span>
+          </button>
+          <button id="leaveBtn" class="control-btn leave">
+            <span class="icon">📞</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
